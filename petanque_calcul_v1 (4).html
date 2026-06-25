@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>Pétanque Calcul V1.0</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',sans-serif;background:#f2f2f7;color:#1c1c1e}
+.app{max-width:430px;margin:0 auto;padding:1rem 1rem 3rem}
+h1{font-size:20px;font-weight:600;color:#1c1c1e}
+.sub{font-size:12px;color:#8e8e93;margin-top:2px;margin-bottom:1.5rem}
+.lbl{font-size:13px;color:#8e8e93;margin-bottom:4px}
+.field{margin-bottom:1rem}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:1rem}
+input[type=number]{width:100%;padding:10px 12px;border:1px solid #d1d1d6;border-radius:10px;font-size:16px;background:#fff;color:#1c1c1e;-webkit-appearance:none}
+input[type=number]:focus{outline:none;border-color:#007aff;box-shadow:0 0 0 3px rgba(0,122,255,.15)}
+.btn-calc{width:100%;padding:13px;border:none;border-radius:10px;background:#007aff;color:#fff;font-size:17px;font-weight:600;cursor:pointer;margin-bottom:1.5rem}
+.btn-calc:active{opacity:.85;transform:scale(.98)}
+.card{background:#fff;border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.card-hd{font-size:12px;font-weight:600;color:#8e8e93;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px}
+.tr{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f2f2f7;gap:8px}
+.tr:last-child{border-bottom:none}
+.tr-l{font-size:15px;color:#1c1c1e;flex:1}
+.tr-r{font-size:13px;color:#8e8e93;white-space:nowrap}
+.gedit{width:72px;text-align:right;padding:5px 8px;border:1px solid #d1d1d6;border-radius:8px;font-size:15px;font-weight:600;color:#1c1c1e;background:#fff}
+.tr-sub{font-size:12px;color:#8e8e93;margin-top:2px}
+.tot-row{display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px solid #f2f2f7;margin-top:4px;font-size:13px;color:#8e8e93}
+.brow{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+.brow-l{color:#8e8e93}
+.brow-v{font-weight:600;color:#1c1c1e}
+.brow-sep{border-top:1px solid #f2f2f7;padding-top:7px;margin-top:3px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Pétanque Calcul</h1>
+  <div class="sub">V1.0</div>
+
+  <div class="field">
+    <div class="lbl">Nombre d'équipes</div>
+    <input type="number" id="nb" min="3" max="256" value="22" step="1" inputmode="numeric"/>
+  </div>
+  <div class="row2">
+    <div><div class="lbl">Mise (€)</div><input type="number" id="mise" min="0" value="10" step="1" inputmode="numeric"/></div>
+    <div><div class="lbl">Prime (€)</div><input type="number" id="prime" min="0" value="0" step="1" inputmode="numeric"/></div>
+  </div>
+  <button class="btn-calc" onclick="calculer()">Calculer</button>
+
+  <div id="results" class="hidden">
+    <div class="card"><div class="card-hd">Tableau concours</div><div id="tc"></div></div>
+    <div class="card"><div class="card-hd">Tableau consolante</div><div id="tcons"></div></div>
+    <div class="card"><div class="card-hd">Budget</div><div id="budget"></div></div>
+    <div class="card"><div class="card-hd">Gains concours</div><div id="gc"></div></div>
+    <div class="card"><div class="card-hd">Gains consolante</div><div id="gcons"></div></div>
+  </div>
+</div>
+
+<script>
+// ── logique tableau ───────────────────────────────────────────────────────────
+// base     = plus grande puissance de 2 <= n  (taille du tableau principal)
+// surplus  = n - base  (nb de paires qui jouent le tour prélim)
+// prelim   = surplus * 2  (nb d'équipes au tour prélim)
+// byes     = base - surplus  (exemptées, entrent au 1er tour du tableau principal)
+//
+// Nommage des tours :
+//   Le tour préliminaire accueille 'prelim' équipes.
+//   Son nom = 1/(base*2) car il produit 'surplus' vainqueurs qui rejoignent
+//   les 'byes' pour former le 1er tour principal de 'base' équipes.
+//   Ex: n=22, base=16, surplus=6, prelim=12 → tour prélim = 1/32, 1er tour principal = 1/16
+//   Ex: n=15, base=8,  surplus=7, prelim=14 → tour prélim = 1/16, 1er tour principal = 1/8
+
+function prevPow2(n){let p=1;while(p*2<=n)p*=2;return p;}
+
+function analyseTableau(n){
+  const base=prevPow2(n);
+  const surplus=n-base;
+  const prelim=surplus*2;
+  const byes=base-surplus;
+  const depthBase=Math.log2(base); // profondeur tableau principal : 1=finale, 2=½, 3=¼...
+  // Nom du tour préliminaire : les 'prelim' équipes jouent pour 'surplus' places
+  // Ces places s'ajoutent aux 'byes' pour former un tour de 'base' équipes
+  // Donc le tour prélim est le 1/(base*2)
+  const nomPrelim = tourNom(depthBase+1);
+  // 1er tour du tableau principal (là où arrivent les exemptés) = 1/base
+  const nomT1 = tourNom(depthBase);
+  return{base, surplus, prelim, byes, depthBase, nomPrelim, nomT1};
+}
+
+// Nom d'un tour selon sa profondeur depuis la finale
+// d=1 → Finale, d=2 → ½ finale, d=3 → ¼ finale = 1/4, d=4 → 1/8, d=5 → 1/16 ...
+function tourNom(d){
+  if(d===1) return'Finale';
+  if(d===2) return'½ finale';
+  if(d===3) return'¼ finale';
+  return'1/'+Math.pow(2,d-1);
+}
+
+// Consolante = perdants tour prélim + perdants 1er tour tableau principal
+function nbConsolante(n){
+  const{surplus, base}=analyseTableau(n);
+  return surplus + base/2;
+}
+
+// Lignes de gains
+function buildLignes(n){
+  const{base, surplus, prelim, byes, depthBase}=analyseTableau(n);
+  const lignes=[];
+
+  // Tour préliminaire
+  if(prelim>0){
+    lignes.push({label:tourNom(depthBase+1)+' — perdants', count:surplus, gain:0});
+  }
+
+  // Tours du tableau principal du plus profond (1er tour = depthBase) jusqu'à ½ finale (d=2)
+  for(let d=depthBase;d>=2;d--){
+    lignes.push({label:tourNom(d)+' — perdants', count:Math.round(Math.pow(2,d-1)/1), gain:0});
+    // nb perdants à ce tour = moitié des équipes présentes = base/2^(depthBase-d+1)... simplifié :
+    // au tour d, il y a base/2^(depthBase-d) équipes → perdants = base/2^(depthBase-d+1)
+  }
+
+  // Finaliste + Vainqueur
+  lignes.push({label:'Finaliste', count:1, gain:0});
+  lignes.push({label:'Vainqueur', count:1, gain:0, winner:true});
+
+  return lignes;
+}
+
+// Recalcul propre des perdants par tour
+function buildLignesV2(n){
+  const{base, surplus, prelim, byes, depthBase}=analyseTableau(n);
+  const lignes=[];
+
+  // Tour préliminaire : surplus perdants
+  if(prelim>0){
+    lignes.push({label:tourNom(depthBase+1)+' — perdants', count:surplus, gain:0});
+  }
+
+  // Tableau principal : à chaque tour d (depthBase → 2), il y a base/2^(depthBase-d+1) perdants
+  // Tour d=depthBase : base équipes → base/2 perdants
+  // Tour d=depthBase-1 : base/2 équipes → base/4 perdants
+  // ...
+  // Tour d=2 (½ finale) : 4 équipes → 2 perdants
+  for(let d=depthBase;d>=2;d--){
+    const equipes=Math.pow(2,d);   // nb équipes à ce tour dans le tableau principal
+    const perdants=equipes/2;
+    lignes.push({label:tourNom(d)+' — perdants', count:Math.round(perdants), gain:0});
+  }
+
+  lignes.push({label:'Finaliste', count:1, gain:0});
+  lignes.push({label:'Vainqueur', count:1, gain:0, winner:true});
+  return lignes;
+}
+
+// ── proposition de gains ──────────────────────────────────────────────────────
+function r5(x){return Math.round(x/5)*5;}
+
+function proposeGains(budget, n, mise){
+  const lignes=buildLignesV2(n);
+  const nL=lignes.length;
+  const iV=nL-1;
+  const iF=nL-2;
+
+  // Tours 1 et 2 = 0€, tour 3 = mise, tours suivants ×2
+  for(let i=0;i<nL;i++){
+    if(i<2) lignes[i].gain=0;
+    else if(i<iF) lignes[i].gain=mise*Math.pow(2,i-2);
+  }
+
+  // Coût intermédiaire (hors finaliste/vainqueur)
+  let coutInter=0;
+  for(let i=0;i<iF;i++) coutInter+=lignes[i].gain*lignes[i].count;
+
+  const restant=Math.max(0,budget-coutInter);
+  let gainF=r5(restant*0.40);
+  let gainV=restant-gainF;
+
+  // Progression garantie
+  const gainPrecF=iF>=2 ? lignes[iF-1].gain : mise;
+  if(gainF<=gainPrecF) gainF=r5(gainPrecF*1.5)+5;
+  if(gainV<=gainF) gainV=gainF+r5(gainF*0.3)+5;
+
+  // Recaler sur budget exact
+  gainV+=budget-coutInter-gainF-gainV;
+
+  lignes[iF].gain=gainF;
+  lignes[iV].gain=gainV;
+  return lignes;
+}
+
+let GC=[],GCONS=[],BC=0,BCONS=0;
+
+function renderGains(data,cid,budget){
+  let html='';
+  data.forEach((r,i)=>{
+    html+=`<div class="tr">
+      <div style="flex:1">
+        <div class="tr-l">${r.label}</div>
+        <div class="tr-sub">${r.count} équipe${r.count>1?'s':''}</div>
+      </div>
+      <input class="gedit" type="number" id="${cid}i${i}" value="${r.gain}" min="0" step="5"
+        onchange="maj('${cid}',${i},${budget})" inputmode="numeric"/>
+    </div>`;
+  });
+  const tot=data.reduce((a,r)=>a+r.gain*r.count,0);
+  const diff=budget-tot;
+  const col=diff===0?'#34c759':diff<0?'#ff3b30':'#ff9500';
+  html+=`<div class="tot-row"><span>Total / Budget</span>
+    <span id="${cid}tot" style="font-weight:600;color:${col}">${tot}€ / ${budget}€</span></div>`;
+  document.getElementById(cid).innerHTML=html;
+}
+
+function maj(cid,idx,budget){
+  const data=cid==='gc'?GC:GCONS;
+  data[idx].gain=parseInt(document.getElementById(cid+'i'+idx).value)||0;
+  const tot=data.reduce((a,r)=>a+r.gain*r.count,0);
+  const diff=budget-tot;
+  const col=diff===0?'#34c759':diff<0?'#ff3b30':'#ff9500';
+  const el=document.getElementById(cid+'tot');
+  if(el){el.textContent=tot+'€ / '+budget+'€';el.style.color=col;}
+}
+
+function row(l,r,fw){
+  return`<div class="tr"><span class="tr-l"${fw?` style="font-weight:${fw}"`:''}}>${l}</span><span class="tr-r">${r}</span></div>`;
+}
+function brow(l,v,sep){
+  return`<div class="brow${sep?' brow-sep':''}"><span class="brow-l">${l}</span><span class="brow-v">${v}</span></div>`;
+}
+
+function calculer(){
+  const n=parseInt(document.getElementById('nb').value)||0;
+  const mise=parseInt(document.getElementById('mise').value)||0;
+  const prime=parseInt(document.getElementById('prime').value)||0;
+  if(n<3) return;
+  document.getElementById('results').classList.remove('hidden');
+
+  const{base,surplus,prelim,byes,depthBase,nomPrelim,nomT1}=analyseTableau(n);
+
+  // Tableau concours
+  let html='';
+  if(prelim>0) html+=row(`${prelim} équipe${prelim>1?'s':''} au 1er tour`, nomPrelim);
+  if(byes>0)   html+=row(`${byes} exemptée${byes>1?'s':''}`, `entrent en ${nomT1}`);
+  for(let d=depthBase;d>=2;d--){
+    html+=row(tourNom(d), `${Math.pow(2,d)} équipes`);
+  }
+  html+=row('Finale','2 équipes','600');
+  document.getElementById('tc').innerHTML=html;
+
+  // Consolante
+  const nc=Math.round(nbConsolante(n));
+  const ct=analyseTableau(nc);
+  let chtml=row(`${nc} équipes au total`,'');
+  if(ct.prelim>0) chtml+=row(`${ct.prelim} au 1er tour`, ct.nomPrelim);
+  if(ct.byes>0)   chtml+=row(`${ct.byes} exemptée${ct.byes>1?'s':''}`, `entrent en ${ct.nomT1}`);
+  document.getElementById('tcons').innerHTML=chtml;
+
+  // Budget
+  const total=n*mise+prime;
+  BC=Math.round(total*2/3);
+  BCONS=total-BC;
+  let bhtml=brow(`${n} × ${mise}€`,`${n*mise}€`);
+  if(prime>0) bhtml+=brow('Prime',`+${prime}€`);
+  bhtml+=brow('Total',`${total}€`,true);
+  bhtml+=brow('→ Concours (2/3)',`${BC}€`);
+  bhtml+=brow('→ Consolante (1/3)',`${BCONS}€`);
+  document.getElementById('budget').innerHTML=bhtml;
+
+  // Gains
+  GC=proposeGains(BC,n,mise);
+  GCONS=proposeGains(BCONS,nc,mise);
+  renderGains(GC,'gc',BC);
+  renderGains(GCONS,'gcons',BCONS);
+}
+
+calculer();
+</script>
+</body>
+</html>
